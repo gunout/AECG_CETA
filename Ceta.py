@@ -72,18 +72,21 @@ class CETAImpactAnalyzer:
             },
             "Agriculture": {
                 "type": "secteur",
+                "pib_base": None,
                 "exportations_base": 8500,
                 "importations_base": 7200,
                 "pays_cles": ["France", "Allemagne", "Pays-Bas", "Italie", "Espagne"]
             },
             "Automobile": {
                 "type": "secteur",
+                "pib_base": None,
                 "exportations_base": 32000,
                 "importations_base": 28000,
                 "pays_cles": ["Allemagne", "France", "Italie", "Espagne", "République tchèque"]
             },
             "Services": {
                 "type": "secteur",
+                "pib_base": None,
                 "exportations_base": 28000,
                 "importations_base": 25000,
                 "pays_cles": ["France", "Allemagne", "Royaume-Uni", "Pays-Bas", "Irlande"]
@@ -110,8 +113,9 @@ class CETAImpactAnalyzer:
         
         data = {'Annee': [date.year for date in dates]}
         
-        # Données économiques de base
-        data['PIB'] = self._simulate_gdp(dates)
+        # Données économiques de base (uniquement pour les pays, pas les secteurs)
+        if self.config["type"] != "secteur":
+            data['PIB'] = self._simulate_gdp(dates)
         
         # Échanges commerciaux
         data['Exportations_Vers_Canada'] = self._simulate_exports(dates)
@@ -127,13 +131,14 @@ class CETAImpactAnalyzer:
         data['Croissance_Sectorielle'] = self._simulate_sector_growth(dates)
         data['Investissements_Etrangers'] = self._simulate_foreign_investment(dates)
         
-        # Indicateurs d'impact économique
-        data['Impact_Sur_PIB'] = self._simulate_gdp_impact(dates)
-        data['Gains_Productivite'] = self._simulate_productivity_gains(dates)
-        data['Economies_Douanieres'] = self._simulate_customs_savings(dates)
+        # Indicateurs d'impact économique (uniquement pour les pays)
+        if self.config["type"] != "secteur":
+            data['Impact_Sur_PIB'] = self._simulate_gdp_impact(dates)
+            data['Gains_Productivite'] = self._simulate_productivity_gains(dates)
+            data['Economies_Douanieres'] = self._simulate_customs_savings(dates)
         
         # Indicateurs spécifiques selon le type
-        if self.config["type"] == "pays_ue":
+        if self.config["type"] == "pays_ue" or self.config["type"] == "union":
             for secteur in self.config["secteurs_cles"]:
                 if secteur == "vin":
                     data['Exportations_Vin'] = self._simulate_wine_exports(dates)
@@ -164,12 +169,10 @@ class CETAImpactAnalyzer:
             year = date.year
             
             # Croissance de base différente selon le type
-            if self.config["type"] == "pays_ue":
+            if self.config["type"] == "pays_ue" or self.config["type"] == "union":
                 base_growth = 0.018  # Croissance moyenne UE
             elif self.config["type"] == "pays_partenaire":
                 base_growth = 0.022  # Croissance moyenne Canada
-            elif self.config["type"] == "union":
-                base_growth = 0.019  # Croissance moyenne UE
             else:  # secteur
                 base_growth = 0.020  # Croissance moyenne sectorielle
                 
@@ -185,11 +188,11 @@ class CETAImpactAnalyzer:
     
     def _simulate_exports(self, dates):
         """Simule les exportations vers le Canada"""
-        if self.config["type"] == "pays_ue":
+        if self.config["type"] in ["pays_ue", "union"]:
             base_exports = self.config["exportations_canada_base"]
         elif self.config["type"] == "secteur":
             base_exports = self.config["exportations_base"]
-        else:  # Canada ou UE
+        else:  # Canada
             base_exports = self.config["exportations_ue_base"]
         
         exports = []
@@ -209,11 +212,11 @@ class CETAImpactAnalyzer:
     
     def _simulate_imports(self, dates):
         """Simule les importations depuis le Canada"""
-        if self.config["type"] == "pays_ue":
+        if self.config["type"] in ["pays_ue", "union"]:
             base_imports = self.config["importations_canada_base"]
         elif self.config["type"] == "secteur":
             base_imports = self.config["importations_base"]
-        else:  # Canada ou UE
+        else:  # Canada
             base_imports = self.config["importations_ue_base"]
         
         imports = []
@@ -292,7 +295,7 @@ class CETAImpactAnalyzer:
                 created = 39000 + 3000 * (year - 2022)  # Stabilisation
                 
             # Ajustement selon le type
-            if self.config["type"] == "pays_ue":
+            if self.config["type"] in ["pays_ue", "union"]:
                 multiplier = 1.0
             elif self.config["type"] == "secteur":
                 multiplier = 0.3
@@ -554,17 +557,19 @@ class CETAImpactAnalyzer:
         ax4 = plt.subplot(4, 2, 4)
         self._plot_employment_investment(df, ax4)
         
-        # 5. Impact sur le PIB et la productivité
-        ax5 = plt.subplot(4, 2, 5)
-        self._plot_gdp_productivity(df, ax5)
+        # 5. Impact sur le PIB et la productivité (uniquement pour les pays)
+        if self.config["type"] != "secteur":
+            ax5 = plt.subplot(4, 2, 5)
+            self._plot_gdp_productivity(df, ax5)
         
         # 6. Analyse sectorielle
         ax6 = plt.subplot(4, 2, 6)
         self._plot_sectoral_analysis(df, ax6)
         
-        # 7. Gains économiques
-        ax7 = plt.subplot(4, 2, 7)
-        self._plot_economic_gains(df, ax7)
+        # 7. Gains économiques (uniquement pour les pays)
+        if self.config["type"] != "secteur":
+            ax7 = plt.subplot(4, 2, 7)
+            self._plot_economic_gains(df, ax7)
         
         # 8. Comparaison avant/après CETA
         ax8 = plt.subplot(4, 2, 8)
@@ -745,12 +750,15 @@ class CETAImpactAnalyzer:
         # 2. Impact économique
         print("\n2. 📊 IMPACT ÉCONOMIQUE:")
         total_jobs = df['Creation_Emplois'].sum()
-        avg_gdp_impact = df['Impact_Sur_PIB'].mean() * 100
-        total_savings = df['Economies_Douanieres'].sum()
         
         print(f"Emplois créés au total: {total_jobs:.0f}")
-        print(f"Impact moyen sur le PIB: {avg_gdp_impact:.3f}%")
-        print(f"Économies douanières totales: {total_savings:.0f} M€")
+        
+        # Ajouter les indicateurs spécifiques aux pays
+        if self.config["type"] != "secteur":
+            avg_gdp_impact = df['Impact_Sur_PIB'].mean() * 100
+            total_savings = df['Economies_Douanieres'].sum()
+            print(f"Impact moyen sur le PIB: {avg_gdp_impact:.3f}%")
+            print(f"Économies douanières totales: {total_savings:.0f} M€")
         
         # 3. Réduction des barrières
         print("\n3. 📋 RÉDUCTION DES BARRIÈRES:")
@@ -767,7 +775,7 @@ class CETAImpactAnalyzer:
         # 4. Spécificités du pays/secteur
         print(f"\n4. 🌟 SPÉCIFICITÉS DE {self.country_sector.upper()}:")
         print(f"Type: {self.config['type']}")
-        if self.config["type"] == "pays_ue":
+        if self.config["type"] in ["pays_ue", "union"]:
             print(f"Secteurs clés: {', '.join(self.config['secteurs_cles'])}")
         elif self.config["type"] == "secteur":
             print(f"Pays clés: {', '.join(self.config['pays_cles'])}")
@@ -782,7 +790,7 @@ class CETAImpactAnalyzer:
         
         # 6. Recommandations stratégiques
         print("\n6. 💡 RECOMMANDATIONS STRATÉGIQUES:")
-        if self.config["type"] == "pays_ue":
+        if self.config["type"] in ["pays_ue", "union"]:
             print("• Maximiser les opportunités d'exportation dans les secteurs clés")
             print("• Adapter les normes et standards pour faciliter les échanges")
             print("• Renforcer la coopération réglementaire avec le Canada")
@@ -794,16 +802,16 @@ class CETAImpactAnalyzer:
             print("• Profiter des reconnaissances mutuelles de qualifications")
         
         # Recommandations spécifiques selon les secteurs
-        if "vin" in self.config.get("secteurs_cles", []):
+        if self.config["type"] in ["pays_ue", "union"] and "vin" in self.config.get("secteurs_cles", []):
             print("• Profiter de la protection des indications géographiques")
             print("• Développer le marketing des vins européens au Canada")
-        if "fromage" in self.config.get("secteurs_cles", []):
+        if self.config["type"] in ["pays_ue", "union"] and "fromage" in self.config.get("secteurs_cles", []):
             print("• Utiliser les quotas d'importation pour fromages fins")
             print("• Mettre en valeur les appellations d'origine protégée")
-        if "automobile" in self.config.get("secteurs_cles", []):
+        if self.config["type"] in ["pays_ue", "union"] and "automobile" in self.config.get("secteurs_cles", []):
             print("• Profiter de l'élimination des droits de douane")
             print("• Harmoniser les standards techniques pour réduire les coûts")
-        if "services" in self.config.get("secteurs_cles", []):
+        if self.config["type"] in ["pays_ue", "union"] and "services" in self.config.get("secteurs_cles", []):
             print("• Explorer les opportunités dans les services financiers")
             print("• Développer les services professionnels et techniques")
 
